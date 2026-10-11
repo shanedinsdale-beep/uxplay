@@ -656,10 +656,12 @@ http_handler_action(raop_conn_t *conn, http_request_t *request, http_response_t 
                                                              apple_session_id,
                                                              get_next_FCUP_RequestID(airplay_video));
             set_next_media_uri_id(airplay_video, ++uri_num);
-        } else {
-            raop->callbacks.on_video_play(raop->callbacks.cls,
-                                                get_playback_location(airplay_video),
-                                                get_start_position_seconds(airplay_video));
+        } else if (!raop->callbacks.on_video_play(raop->callbacks.cls,
+                                                  get_playback_location(airplay_video),
+                                                  get_start_position_seconds(airplay_video),
+                                                  get_playback_uuid(airplay_video),
+                                                  get_client_proc_name(airplay_video))) {
+            http_response_init(response, "HTTP/1.1", 503, "Service Unavailable");
         }
 
 
@@ -764,9 +766,13 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
         float resume_pos = get_resume_position_seconds(airplay_video);
         float start_pos = get_start_position_seconds(airplay_video);
 	//printf("========= %f ============call on_video_play===== %f ==========\n", start_pos, resume_pos);
-        raop->callbacks.on_video_play(raop->callbacks.cls,
-                                      get_playback_location(airplay_video),
-                                      resume_pos > start_pos ? resume_pos : start_pos);
+        if (!raop->callbacks.on_video_play(raop->callbacks.cls,
+                                           get_playback_location(airplay_video),
+                                           resume_pos > start_pos ? resume_pos : start_pos,
+                                           get_playback_uuid(airplay_video),
+                                           get_client_proc_name(airplay_video))) {
+            http_response_init(response, "HTTP/1.1", 503, "Service Unavailable");
+        }
         return;
     }
     
@@ -811,6 +817,14 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
     plist_mem_free (playback_uuid);
     count++;
 
+    plist_t req_client_proc_name_node = plist_dict_get_item(req_root_node, "clientProcName");
+    if (PLIST_IS_STRING(req_client_proc_name_node)) {
+        plist_get_string_val(req_client_proc_name_node, &client_proc_name);
+    }
+    set_client_proc_name(airplay_video, client_proc_name);
+    plist_mem_free(client_proc_name);
+    client_proc_name = NULL;
+
     /* ensure that space will always be available for adding future playlists */
 
     if (count == MAX_AIRPLAY_VIDEO) {
@@ -853,18 +867,18 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
     if (!strncmp(playback_location, "http://", strlen("http://")) ||
         !strncmp(playback_location, "https://", strlen("https://"))) {
         set_playback_location(airplay_video, playback_location, strlen(playback_location));
-        raop->callbacks.on_video_play(raop->callbacks.cls,
-                                      get_playback_location(airplay_video),
-                                      start_position_seconds);
+        if (!raop->callbacks.on_video_play(raop->callbacks.cls,
+                                           get_playback_location(airplay_video),
+                                           start_position_seconds,
+                                           get_playback_uuid(airplay_video),
+                                           get_client_proc_name(airplay_video))) {
+            http_response_init(response, "HTTP/1.1", 503, "Service Unavailable");
+        }
     } else if (uri_suffix) {
-        plist_t req_client_proc_name_node = plist_dict_get_item(req_root_node, "clientProcName");
-        if (req_client_proc_name_node) {
-            plist_get_string_val(req_client_proc_name_node, &client_proc_name);
-            if (!strstr(supported_hls_proc_names, client_proc_name)){
-                logger_log(raop->logger, LOGGER_WARNING, "Unsupported m3u8 HLS streaming format: clientProcName %s not found in supported list: %s",
-                           client_proc_name, supported_hls_proc_names);
-            }
-            plist_mem_free(client_proc_name);
+        const char *proc_name = get_client_proc_name(airplay_video);
+        if (*proc_name && !strstr(supported_hls_proc_names, proc_name)) {
+            logger_log(raop->logger, LOGGER_WARNING, "Unsupported m3u8 HLS streaming format: clientProcName %s not found in supported list: %s",
+                       proc_name, supported_hls_proc_names);
         }
         size_t len = strlen(get_uri_local_prefix(airplay_video)) + strlen(uri_suffix);
         char *location = (char *) calloc(len + 1, sizeof(char));

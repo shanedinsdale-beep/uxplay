@@ -49,6 +49,7 @@ struct airplay_video_s {
     raop_t *raop;
     char *apple_session_id;
     char *playback_uuid;
+    char *client_proc_name;
     char *uri_prefix;
     char *local_uri_prefix;
     char *playback_location;
@@ -103,6 +104,7 @@ airplay_video_t *airplay_video_init(raop_t *raop, unsigned short http_port, cons
     airplay_video->apple_session_id = NULL;
     airplay_video->start_position_seconds = 0.0f;
     airplay_video->playback_uuid = NULL;
+    airplay_video->client_proc_name = NULL;
     airplay_video->uri_prefix = NULL;
     airplay_video->playback_location = NULL;
     airplay_video->media_data_store = NULL;
@@ -120,6 +122,9 @@ airplay_video_destroy(airplay_video_t *airplay_video) {
     }
     if (airplay_video->playback_uuid) {
         free(airplay_video->playback_uuid);
+    }
+    if (airplay_video->client_proc_name) {
+        free(airplay_video->client_proc_name);
     }
     if (airplay_video->uri_prefix) {
         free(airplay_video->uri_prefix);
@@ -168,6 +173,22 @@ void set_playback_uuid(airplay_video_t *airplay_video, const char *playback_uuid
     }
     airplay_video->playback_uuid = str;
     str = NULL;
+}
+
+void set_client_proc_name(airplay_video_t *airplay_video, const char *client_proc_name) {
+    char *str = strdup(client_proc_name ? client_proc_name : "");
+    if (!str) {
+        printf("Memory allocation failed (str)\n");
+        exit(1);
+    }
+    if (airplay_video->client_proc_name) {
+        free(airplay_video->client_proc_name);
+    }
+    airplay_video->client_proc_name = str;
+}
+
+const char *get_client_proc_name(airplay_video_t *airplay_video) {
+    return airplay_video->client_proc_name ? airplay_video->client_proc_name : "";
 }
 
 void set_uri_prefix(airplay_video_t *airplay_video, const char *uri_prefix, size_t len) {

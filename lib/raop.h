@@ -115,7 +115,9 @@ struct raop_callbacks_s {
     void  (*export_dacp) (void *cls, const char *active_remote, const char *dacp_id);
     int   (*video_set_codec)(void *cls, video_codec_t codec);
     /* for HLS video player controls */
-    void  (*on_video_play) (void *cls, const char *location, const float start_position);
+    /* returns false if the video cannot be played (the client is then sent an error) */
+    bool  (*on_video_play) (void *cls, const char *location, const float start_position,
+                            const char *playback_uuid, const char *client_proc_name);
     void  (*on_video_scrub) (void *cls, const float position);
     void  (*on_video_rate) (void *cls, const float rate);
     void  (*on_video_stop) (void *cls);
