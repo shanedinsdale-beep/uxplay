@@ -21,7 +21,7 @@
    internal GStreamer player.  UxPlay connects to a Unix socket where the external process listens, and
    exchanges newline-delimited JSON messages with it (protocol version 1):
 
-   UxPlay -> player:  hello, play, rate, scrub, stop, disconnect
+   UxPlay -> player:  hello, play, rate, scrub, stop, disconnect, volume
    player -> UxPlay:  hello, status (answers GET /playback-info), ended, failed
 
    Example:  {"v":1,"type":"play","session":"<uuid>","location":"https://...","start":0,"client":"","kind":"url"}  */
@@ -58,7 +58,8 @@ bool hls_forward_play(const char *session, const char *location, float start_pos
 bool hls_forward_rate(float rate);
 bool hls_forward_scrub(float position);
 bool hls_forward_stop(const char *reason);   /* reason: "stop" or "playlistRemove"; ends the session */
-bool hls_forward_disconnect(void);           /* the client went away without stopping; ends the session */
+bool hls_forward_disconnect(void);
+bool hls_forward_volume(double volume);     /* 0.0 (mute) to 1.0 */           /* the client went away without stopping; ends the session */
 
 /* latest state of the current session from the player; false if there is no current session */
 bool hls_forward_get_status(hls_forward_status_t *status);

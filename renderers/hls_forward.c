@@ -45,6 +45,7 @@ bool hls_forward_rate(float rate) { return false; }
 bool hls_forward_scrub(float position) { return false; }
 bool hls_forward_stop(const char *reason) { return false; }
 bool hls_forward_disconnect(void) { return false; }
+bool hls_forward_volume(double volume) { return false; }
 bool hls_forward_get_status(hls_forward_status_t *status) { return false; }
 
 #else
@@ -431,7 +432,7 @@ static void *connection_thread(void *arg) {
         begin_message(&line, "hello", NULL);
         put_str(&line, ",\"role\":\"uxplay\",\"version\":");
         put_json_string(&line, uxplay_version);
-        put_str(&line, ",\"features\":[]");
+        put_str(&line, ",\"features\":[\"volume\"]");
         pthread_mutex_lock(&mutex);
         sock = s;
         send_message_locked(&line);
@@ -565,6 +566,10 @@ bool hls_forward_scrub(float position) {
 
 bool hls_forward_stop(const char *reason) {
     return send_session_message("stop", NULL, 0.0, reason, true);
+}
+
+bool hls_forward_volume(double volume) {
+    return send_session_message("volume", "volume", volume, NULL, false);
 }
 
 bool hls_forward_disconnect(void) {
