@@ -515,11 +515,12 @@ bool hls_forward_play(const char *session_id, const char *location, float start_
 
     pthread_mutex_lock(&mutex);
     bool ok = send_message_locked(&line);
-    if (ok) {
-        snprintf(session, sizeof(session), "%s", session_id);
-        memset(&status, 0, sizeof(status));
-        have_status = false;
-    }
+    snprintf(session, sizeof(session), "%s", session_id);
+    memset(&status, 0, sizeof(status));
+    /* not sent: report the video finished at once, so the client takes it back (iOS ignores an error
+       status to /play, and then waits on the receiver indefinitely) */
+    status.finished = !ok;
+    have_status = !ok;
     pthread_mutex_unlock(&mutex);
     free(line.data);
     return ok;

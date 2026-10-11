@@ -1257,8 +1257,8 @@ and sends one JSON object per line: `play` (with the playback uuid, location, st
 kind `"url"` or `"hls-local"`), `rate`, `scrub`, `stop` and `disconnect`.  The player answers with `status`
 messages (duration, position, rate, ready, seekable range), which UxPlay uses to answer the client's
 `/playback-info` requests, and `ended` or `failed` when the video is over.  Every message carries `"v":1`
-(the protocol version) and a `"type"`; unknown fields are ignored.  If no player is connected, the client's
-`/play` request is refused, and the client keeps playing the video itself.  Screen mirroring is unaffected.
+(the protocol version) and a `"type"`; unknown fields are ignored.  If no player is connected (or it
+reports `failed`), the video is reported as finished, and the client resumes playing it itself.  Screen mirroring is unaffected.
 
 **-lang \[list\]**  Specify language preferences for YouTube app HLS videos,
 some of which now which offer a choice of language renditions (using AI dubbing of the original). If this option is not 

@@ -3009,17 +3009,17 @@ extern "C" bool check_register(void *cls, const char *client_pk) {
 }
 /* control  callbacks for video player (unimplemented) */
 
-extern "C" bool on_video_play(void *cls, const char* location, const float start_position,
+extern "C" void on_video_play(void *cls, const char* location, const float start_position,
                               const char *playback_uuid, const char *client_proc_name) {
     if (hls_forward_socket.length()) {
         /* the YouTube path hands over the playlists that uxplay serves at http://localhost:<port>/ */
         const char *kind = strncmp(location, "http://localhost:", strlen("http://localhost:")) ? "url" : "hls-local";
         LOGI("on_video_play: forwarding %s video, start position %f", kind, start_position);
         if (!hls_forward_play(playback_uuid, location, start_position, client_proc_name, kind)) {
-            LOGE("on_video_play: external player is not connected; refusing the video");
-            return false;
+            /* the client is told the video has finished, and resumes playing it itself */
+            LOGE("on_video_play: external player is not connected; handing the video back to the client");
         }
-        return true;
+        return;
     }
     /* store start_position until renderer for this url exists */
     url_start_position = start_position;
@@ -3029,7 +3029,6 @@ extern "C" bool on_video_play(void *cls, const char* location, const float start
     preserve_connections = true;
     LOGI("********************on_video_play: location = %s*** start position %f ********************", url.c_str(), start_position);
     video_reset(cls, RESET_TYPE_ON_VIDEO_PLAY);
-    return true;
 }
 
 extern "C" void on_video_scrub(void *cls, const float position) {

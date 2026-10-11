@@ -51,7 +51,8 @@ int hls_forward_init(logger_t *logger, const char *socket_path, const char *vers
 void hls_forward_destroy(void);
 bool hls_forward_connected(void);
 
-/* each returns false if the message could not be sent (no player connected) */
+/* each returns false if the message could not be sent (no player connected); a play that was not sent
+   is reported as finished by hls_forward_get_status, so the client resumes the video itself */
 bool hls_forward_play(const char *session, const char *location, float start_position,
                       const char *client, const char *kind);
 bool hls_forward_rate(float rate);

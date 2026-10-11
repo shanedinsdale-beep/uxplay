@@ -656,12 +656,12 @@ http_handler_action(raop_conn_t *conn, http_request_t *request, http_response_t 
                                                              apple_session_id,
                                                              get_next_FCUP_RequestID(airplay_video));
             set_next_media_uri_id(airplay_video, ++uri_num);
-        } else if (!raop->callbacks.on_video_play(raop->callbacks.cls,
-                                                  get_playback_location(airplay_video),
-                                                  get_start_position_seconds(airplay_video),
-                                                  get_playback_uuid(airplay_video),
-                                                  get_client_proc_name(airplay_video))) {
-            http_response_init(response, "HTTP/1.1", 503, "Service Unavailable");
+        } else {
+            raop->callbacks.on_video_play(raop->callbacks.cls,
+                                          get_playback_location(airplay_video),
+                                          get_start_position_seconds(airplay_video),
+                                          get_playback_uuid(airplay_video),
+                                          get_client_proc_name(airplay_video));
         }
 
 
@@ -766,13 +766,11 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
         float resume_pos = get_resume_position_seconds(airplay_video);
         float start_pos = get_start_position_seconds(airplay_video);
 	//printf("========= %f ============call on_video_play===== %f ==========\n", start_pos, resume_pos);
-        if (!raop->callbacks.on_video_play(raop->callbacks.cls,
-                                           get_playback_location(airplay_video),
-                                           resume_pos > start_pos ? resume_pos : start_pos,
-                                           get_playback_uuid(airplay_video),
-                                           get_client_proc_name(airplay_video))) {
-            http_response_init(response, "HTTP/1.1", 503, "Service Unavailable");
-        }
+        raop->callbacks.on_video_play(raop->callbacks.cls,
+                                      get_playback_location(airplay_video),
+                                      resume_pos > start_pos ? resume_pos : start_pos,
+                                      get_playback_uuid(airplay_video),
+                                      get_client_proc_name(airplay_video));
         return;
     }
     
@@ -867,13 +865,11 @@ http_handler_play(raop_conn_t *conn, http_request_t *request, http_response_t *r
     if (!strncmp(playback_location, "http://", strlen("http://")) ||
         !strncmp(playback_location, "https://", strlen("https://"))) {
         set_playback_location(airplay_video, playback_location, strlen(playback_location));
-        if (!raop->callbacks.on_video_play(raop->callbacks.cls,
-                                           get_playback_location(airplay_video),
-                                           start_position_seconds,
-                                           get_playback_uuid(airplay_video),
-                                           get_client_proc_name(airplay_video))) {
-            http_response_init(response, "HTTP/1.1", 503, "Service Unavailable");
-        }
+        raop->callbacks.on_video_play(raop->callbacks.cls,
+                                      get_playback_location(airplay_video),
+                                      start_position_seconds,
+                                      get_playback_uuid(airplay_video),
+                                      get_client_proc_name(airplay_video));
     } else if (uri_suffix) {
         const char *proc_name = get_client_proc_name(airplay_video);
         if (*proc_name && !strstr(supported_hls_proc_names, proc_name)) {
