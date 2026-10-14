@@ -184,6 +184,7 @@ static int n_video_renderers = 0;
 static int n_audio_renderers = 0;
 static bool hls_support = false;
 static std::string hls_forward_socket = "";
+static bool client_lost = false;   /* the client stopped sending feedback (left the network) */
 static std::string lang_requested = "";
 static std::string lang_subtitles = "";
 static std::string lang_system = "";
@@ -588,6 +589,7 @@ static gboolean feedback_callback(gpointer loop) {
             reset_httpd = true;
             relaunch_video = true;
             full_video_reset = true;
+            client_lost = true;
             g_main_loop_quit((GMainLoop *) loop);
             return TRUE;
         } else if (missed_feedback > 2) {
@@ -2531,7 +2533,7 @@ extern "C" void video_reset(void *cls, reset_type_t type) {
     case RESET_TYPE_NOHOLD:
         LOGD("video_reset: type = NoHold");
         if (hls_forward_socket.length()) {
-            hls_forward_disconnect();
+            hls_forward_disconnect("replaced");
         }
         if (hls_support) {
 	    url.erase();
@@ -2648,8 +2650,10 @@ extern "C" void conn_destroy (void *cls) {
     LOGD("Open connections: %i", open_connections);
     if (open_connections == 0) {
         if (hls_forward_socket.length()) {
-            hls_forward_disconnect();
+            /* closed: the client switched to another receiver or took the video back; lost: it went away */
+            hls_forward_disconnect(client_lost ? "lost" : "closed");
         }
+        client_lost = false;
         remote_clock_offset = 0;
         if (use_audio) {
             audio_renderer_stop();

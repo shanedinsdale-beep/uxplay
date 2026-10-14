@@ -44,7 +44,7 @@ bool hls_forward_play(const char *session, const char *location, float start_pos
 bool hls_forward_rate(float rate) { return false; }
 bool hls_forward_scrub(float position) { return false; }
 bool hls_forward_stop(const char *reason) { return false; }
-bool hls_forward_disconnect(void) { return false; }
+bool hls_forward_disconnect(const char *reason) { return false; }
 bool hls_forward_volume(double volume) { return false; }
 bool hls_forward_get_status(hls_forward_status_t *status) { return false; }
 
@@ -572,8 +572,8 @@ bool hls_forward_volume(double volume) {
     return send_session_message("volume", "volume", volume, NULL, false);
 }
 
-bool hls_forward_disconnect(void) {
-    return send_session_message("disconnect", NULL, 0.0, NULL, true);
+bool hls_forward_disconnect(const char *reason) {
+    return send_session_message("disconnect", NULL, 0.0, reason, true);
 }
 
 bool hls_forward_get_status(hls_forward_status_t *out) {

@@ -1254,7 +1254,7 @@ external player process listening on the Unix socket *socket*: YouTube HLS video
 from UxPlay's own HTTP server at `http://localhost:<port>/master.m3u8`) and also direct video URLs, such as
 those sent by Safari when its AirPlay button is used.  UxPlay connects to the socket (retrying every second)
 and sends one JSON object per line: `play` (with the playback uuid, location, start position, client name and
-kind `"url"` or `"hls-local"`), `rate`, `scrub`, `stop`, `disconnect` and `volume` (0.0 to 1.0, from the client's volume buttons).  The player answers with `status`
+kind `"url"` or `"hls-local"`), `rate`, `scrub`, `stop`, `disconnect` (reason `closed`, `lost` or `replaced`) and `volume` (0.0 to 1.0, from the client's volume buttons).  The player answers with `status`
 messages (duration, position, rate, ready, seekable range), which UxPlay uses to answer the client's
 `/playback-info` requests, and `ended` or `failed` when the video is over.  Every message carries `"v":1`
 (the protocol version) and a `"type"`; unknown fields are ignored.  If no player is connected (or it

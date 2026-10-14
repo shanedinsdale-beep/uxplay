@@ -270,17 +270,17 @@ int create_playback_info_plist_xml(playback_info_t *playback_info, char **plist_
     plist_t rate_node = plist_new_real(playback_info->rate);
     plist_dict_set_item(res_root_node, "rate", rate_node);
 
-    /* should these be int or bool? */
-    plist_t ready_to_play_node = plist_new_uint(playback_info->ready_to_play);
+    /* booleans, as Apple TVs send them (an integer readyToPlay is ignored by iOS 26 Safari) */
+    plist_t ready_to_play_node = plist_new_bool(playback_info->ready_to_play);
     plist_dict_set_item(res_root_node, "readyToPlay", ready_to_play_node);
 
-    plist_t playback_buffer_empty_node = plist_new_uint(playback_info->playback_buffer_empty);
+    plist_t playback_buffer_empty_node = plist_new_bool(playback_info->playback_buffer_empty);
     plist_dict_set_item(res_root_node, "playbackBufferEmpty", playback_buffer_empty_node);
 
-    plist_t playback_buffer_full_node = plist_new_uint(playback_info->playback_buffer_full);
+    plist_t playback_buffer_full_node = plist_new_bool(playback_info->playback_buffer_full);
     plist_dict_set_item(res_root_node, "playbackBufferFull", playback_buffer_full_node);
 
-    plist_t playback_likely_to_keep_up_node = plist_new_uint(playback_info->playback_likely_to_keep_up);
+    plist_t playback_likely_to_keep_up_node = plist_new_bool(playback_info->playback_likely_to_keep_up);
     plist_dict_set_item(res_root_node, "playbackLikelyToKeepUp", playback_likely_to_keep_up_node);
 
     plist_t loaded_time_ranges_node = plist_new_array();
@@ -347,6 +347,7 @@ http_handler_playback_info(raop_conn_t *conn, http_request_t *request, http_resp
     playback_info.seekableTimeRanges = (void *) &time_ranges_seekable;
 
     *response_datalen =  create_playback_info_plist_xml(&playback_info, response_data);
+    logger_log(raop->logger, LOGGER_DEBUG, "playback_info reply:\n%s", *response_data);
     http_response_add_header(response, "Content-Type", "text/x-apple-plist+xml");
 }
 

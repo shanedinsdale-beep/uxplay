@@ -58,8 +58,10 @@ bool hls_forward_play(const char *session, const char *location, float start_pos
 bool hls_forward_rate(float rate);
 bool hls_forward_scrub(float position);
 bool hls_forward_stop(const char *reason);   /* reason: "stop" or "playlistRemove"; ends the session */
-bool hls_forward_disconnect(void);
-bool hls_forward_volume(double volume);     /* 0.0 (mute) to 1.0 */           /* the client went away without stopping; ends the session */
+/* the client went away without stopping; ends the session.  reason: "closed" (connections closed: it
+   switched receivers or took the video back), "lost" (it stopped responding), "replaced" (another client) */
+bool hls_forward_disconnect(const char *reason);
+bool hls_forward_volume(double volume);     /* 0.0 (mute) to 1.0 */
 
 /* latest state of the current session from the player; false if there is no current session */
 bool hls_forward_get_status(hls_forward_status_t *status);
