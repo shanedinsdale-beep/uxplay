@@ -2992,7 +2992,8 @@ extern "C" bool check_register(void *cls, const char *client_pk) {
 }
 /* control  callbacks for video player (unimplemented) */
 
-extern "C" void on_video_play(void *cls, const char* location, const float start_position) {
+extern "C" void on_video_play(void *cls, const char* location, const float start_position,
+                              const char *playback_uuid, const char *client_proc_name) {
     /* store start_position until renderer for this url exists */
     url_start_position = start_position;
     url.erase();

@@ -38,6 +38,8 @@ void set_playback_uuid(airplay_video_t *airplay_video, const char *playback_uuid
 const char *get_playback_uuid(airplay_video_t *airplay_video);
 void set_uri_prefix(airplay_video_t *airplay_video, const char *uri_prefix, size_t len);
 const char *get_uri_prefix(airplay_video_t *airplay_video);
+void set_client_proc_name(airplay_video_t *airplay_video, const char *client_proc_name);
+const char *get_client_proc_name(airplay_video_t *airplay_video);
 char *get_uri_local_prefix(airplay_video_t *airplay_video);
 void set_playback_location(airplay_video_t *airplay_video, const char *location, size_t len);
 const char *get_playback_location(airplay_video_t *airplay_video);
