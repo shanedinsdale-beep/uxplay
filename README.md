@@ -1249,6 +1249,17 @@ allows selection of the version of GStreamer's
 is the recommended player, but if some videos fail to play, you can try
 with version 2.)_
 
+**-hls-forward *socket*** (implies `-hls`) Instead of playing AirPlay video itself, UxPlay hands it to an
+external player process listening on the Unix socket *socket*: YouTube HLS video (served, as with `-hls`,
+from UxPlay's own HTTP server at `http://localhost:<port>/master.m3u8`) and also direct video URLs, such as
+those sent by Safari when its AirPlay button is used.  UxPlay connects to the socket (retrying every second)
+and sends one JSON object per line: `play` (with the playback uuid, location, start position, client name and
+kind `"url"` or `"hls-local"`), `rate`, `scrub`, `stop`, `disconnect` (reason `closed`, `lost` or `replaced`) and `volume` (0.0 to 1.0, from the client's volume buttons).  The player answers with `status`
+messages (duration, position, rate, ready, seekable range), which UxPlay uses to answer the client's
+`/playback-info` requests, and `ended` or `failed` when the video is over.  Every message carries `"v":1`
+(the protocol version) and a `"type"`; unknown fields are ignored.  If no player is connected (or it
+reports `failed`), the video is reported as finished, and the client resumes playing it itself.  Screen mirroring is unaffected.
+
 **-lang \[list\]**  Specify language preferences for YouTube app HLS videos,
 some of which now which offer a choice of language renditions (using AI dubbing of the original). If this option is not 
 used, preferences will be taken from environment variables ($LANGUAGE, $LC_ALL, $LC_MESSAGES, $LANG, searched

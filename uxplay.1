@@ -23,6 +23,10 @@ UxPlay 1.74: An open\-source AirPlay mirroring (+ audio streaming) server:
 .IP
    v = 2 or 3 (default 3) optionally selects video player version
 .TP
+\fB\-hls-forward\fI s\fR Hand HLS and AirPlay-button video (e.g. from Safari) to an
+.IP
+   external player listening on Unix socket "s" (implies -hls)
+.TP
 \fB\-lang\fR ... Ranked HLS language preferences ("fr:pt-BR:.."); " " = none
 .TP
 \fB\-slang\fR ...Ranked HLS subtitle language preferences (overrides -lang) 

@@ -70,6 +70,7 @@
 #include "renderers/video_renderer.h"
 #include "renderers/audio_renderer.h"
 #include "renderers/mux_renderer.h"
+#include "renderers/hls_forward.h"
 #ifdef DBUS
 #include <dbus/dbus.h>
 #endif
@@ -182,6 +183,8 @@ static bool h265_support = false;
 static int n_video_renderers = 0;
 static int n_audio_renderers = 0;
 static bool hls_support = false;
+static std::string hls_forward_socket = "";
+static bool client_lost = false;   /* the client stopped sending feedback (left the network) */
 static std::string lang_requested = "";
 static std::string lang_subtitles = "";
 static std::string lang_system = "";
@@ -586,6 +589,7 @@ static gboolean feedback_callback(gpointer loop) {
             reset_httpd = true;
             relaunch_video = true;
             full_video_reset = true;
+            client_lost = true;
             g_main_loop_quit((GMainLoop *) loop);
             return TRUE;
         } else if (missed_feedback > 2) {
@@ -1027,6 +1031,8 @@ static void print_info (char *name) {
     printf("          n=1,2,.. format = H264/5, ALAC/AAC. Default fn=\"recording\"\n");
     printf("-hls [v]  Support HTTP Live Streaming (HLS), Youtube app video only: \n");
     printf("          v = 2 or 3 (default 3) optionally selects video player version\n");
+    printf("-hls-forward s  Hand HLS and AirPlay-button video (e.g. from Safari) to an\n");
+    printf("          external player listening on Unix socket \"s\" (implies -hls)\n");
     printf("-lang ... Ranked HLS language preferences (\"fr:pt-BR:..\");\" \" = none\n");
     printf("-slang ...Ranked HLS subtitle language preferences (overrides -lang)\n");
     printf("-custom s Restrict HLS resolutions by codec (useful on low-power hosts)\n");
@@ -2115,6 +2121,13 @@ static void parse_arguments (int argc, char *argv[]) {
                 exit(1);
             }
             i++;
+        } else if (arg == "-hls-forward") {
+            if (!option_has_value(i, argc, arg, argv[i+1])) {
+                fprintf(stderr,"option \"-hls-forward\" must be followed by the path of the external player's Unix socket\n");
+                exit(1);
+            }
+            hls_forward_socket = argv[++i];
+            hls_support = true;
         } else if (arg == "-hls") {
             hls_support = true;
             if (i < argc - 1 && *argv[i+1] != '-') {
@@ -2519,6 +2532,9 @@ extern "C" void video_reset(void *cls, reset_type_t type) {
     switch (type) {
     case RESET_TYPE_NOHOLD:
         LOGD("video_reset: type = NoHold");
+        if (hls_forward_socket.length()) {
+            hls_forward_disconnect("replaced");
+        }
         if (hls_support) {
 	    url.erase();
             raop_destroy_airplay_video(raop, -1);
@@ -2633,6 +2649,11 @@ extern "C" void conn_destroy (void *cls) {
     open_connections--;
     LOGD("Open connections: %i", open_connections);
     if (open_connections == 0) {
+        if (hls_forward_socket.length()) {
+            /* closed: the client switched to another receiver or took the video back; lost: it went away */
+            hls_forward_disconnect(client_lost ? "lost" : "closed");
+        }
+        client_lost = false;
         remote_clock_offset = 0;
         if (use_audio) {
             audio_renderer_stop();
@@ -2794,6 +2815,12 @@ extern "C" double audio_set_client_volume(void *cls) {
 //callback from RAOP_SET_PARAMETER "volume" handler
 extern "C" void audio_set_volume (void *cls, float volume) {
     double db, db_flat, frac, gst_volume;
+    if (hls_forward_socket.length()) {
+        /* AirPlay volume (-30 to 0 dB, -144 = mute) as a 0-1 slider fraction, with the dB value; sent during a
+         * video and also with none, while the client's audio output is this receiver */
+        double slider = (volume <= -30.0f) ? 0.0 : (volume >= 0.0f) ? 1.0 : (30.0 + volume) / 30.0;
+        hls_forward_volume(slider, (double) volume);
+    }
     if (!use_audio) {
       return;
     }
@@ -2994,6 +3021,16 @@ extern "C" bool check_register(void *cls, const char *client_pk) {
 
 extern "C" void on_video_play(void *cls, const char* location, const float start_position,
                               const char *playback_uuid, const char *client_proc_name) {
+    if (hls_forward_socket.length()) {
+        /* the YouTube path hands over the playlists that uxplay serves at http://localhost:<port>/ */
+        const char *kind = strncmp(location, "http://localhost:", strlen("http://localhost:")) ? "url" : "hls-local";
+        LOGI("on_video_play: forwarding %s video, start position %f", kind, start_position);
+        if (!hls_forward_play(playback_uuid, location, start_position, client_proc_name, kind)) {
+            /* the client is told the video has finished, and resumes playing it itself */
+            LOGE("on_video_play: external player is not connected; handing the video back to the client");
+        }
+        return;
+    }
     /* store start_position until renderer for this url exists */
     url_start_position = start_position;
     url.erase();
@@ -3006,11 +3043,19 @@ extern "C" void on_video_play(void *cls, const char* location, const float start
 
 extern "C" void on_video_scrub(void *cls, const float position) {
     LOGI("on_video_scrub: position = %7.5f\n", position);
+    if (hls_forward_socket.length()) {
+        hls_forward_scrub(position);
+        return;
+    }
     video_renderer_seek(position);
 }
 
 extern "C" void on_video_rate(void *cls, const float rate) {
     LOGI("on_video_rate = %7.5f\n", rate);
+    if (hls_forward_socket.length()) {
+        hls_forward_rate(rate);
+        return;
+    }
     if (rate == 1.0f) {
         video_renderer_resume();
     } else if (rate ==  0.0f) {
@@ -3027,6 +3072,12 @@ extern "C" float on_video_playlist_remove (void *cls) {
     float rate;
     bool buffer_empty, buffer_full;
     LOGI("************************* on_video_playlist_remove\n");
+    if (hls_forward_socket.length()) {
+        hls_forward_status_t status;
+        position = hls_forward_get_status(&status) ? status.position : 0.0;
+        hls_forward_stop("playlistRemove");
+        return (float) position;
+    }
     video_renderer_pause();
     video_get_playback_info(&duration, &position, &seek_start, &seek_end, &rate, &buffer_empty, &buffer_full);
     return (float) position;
@@ -3034,11 +3085,40 @@ extern "C" float on_video_playlist_remove (void *cls) {
 
  extern "C" void on_video_stop(void *cls) {
     LOGI("**************************on_video_stop\n");
+    if (hls_forward_socket.length()) {
+        hls_forward_stop("stop");
+        return;
+    }
     video_renderer_hls_ready();
  }
 
 extern "C" void on_video_acquire_playback_info (void *cls, playback_info_t *playback_info) {
     int buffering_level;
+    if (hls_forward_socket.length()) {
+        /* answer from the last status the external player sent */
+        hls_forward_status_t status;
+        if (!hls_forward_get_status(&status)) {
+            playback_info->position = -1.0;   /* no video: "playback_info not available" */
+            playback_info->duration = 0.0;
+            return;
+        }
+        if (status.finished) {
+            LOGI("external player has finished the video");
+            playback_info->position = -1.0;
+            playback_info->duration = -1.0;   /* uxplay reports the video as finished */
+            return;
+        }
+        playback_info->duration = status.duration;
+        playback_info->position = status.position;
+        playback_info->seek_start = status.seek_start;
+        playback_info->seek_duration = status.seek_end - status.seek_start;
+        playback_info->rate = status.rate;
+        playback_info->ready_to_play = status.ready;
+        playback_info->playback_buffer_empty = !status.ready;
+        playback_info->playback_buffer_full = status.ready;
+        playback_info->playback_likely_to_keep_up = status.ready;
+        return;
+    }
     bool still_playing = video_get_playback_info(&playback_info->duration, &playback_info->position,
                                                  &playback_info->seek_start, &playback_info->seek_duration,
                                                  &playback_info->rate,
@@ -3575,6 +3655,12 @@ int main (int argc, char *argv[]) {
     logger_set_callback(render_logger, log_callback, NULL);
     logger_set_level(render_logger, log_level);
 
+    if (hls_forward_socket.length() &&
+        hls_forward_init(render_logger, hls_forward_socket.c_str(), VERSION)) {
+        LOGE("stopping");
+        exit(1);
+    }
+
     if (use_audio) {
         audio_renderer_init(render_logger, audiosink.c_str(), &audio_sync, &video_sync, audio_rtp_pipeline.c_str());
     } else {
@@ -3718,6 +3804,9 @@ int main (int argc, char *argv[]) {
 }
  
 static void cleanup() {
+    if (hls_forward_socket.length()) {
+        hls_forward_destroy();
+    }
     if (use_audio) {
         audio_renderer_destroy();
     }
