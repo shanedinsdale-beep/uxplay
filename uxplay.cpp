@@ -2816,9 +2816,10 @@ extern "C" double audio_set_client_volume(void *cls) {
 extern "C" void audio_set_volume (void *cls, float volume) {
     double db, db_flat, frac, gst_volume;
     if (hls_forward_socket.length()) {
-        /* AirPlay volume (-30 to 0 dB, -144 = mute) as a 0-1 slider fraction; sent only during a video */
+        /* AirPlay volume (-30 to 0 dB, -144 = mute) as a 0-1 slider fraction, with the dB value; sent during a
+         * video and also with none, while the client's audio output is this receiver */
         double slider = (volume <= -30.0f) ? 0.0 : (volume >= 0.0f) ? 1.0 : (30.0 + volume) / 30.0;
-        hls_forward_volume(slider);
+        hls_forward_volume(slider, (double) volume);
     }
     if (!use_audio) {
       return;

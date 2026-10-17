@@ -61,7 +61,7 @@ bool hls_forward_stop(const char *reason);   /* reason: "stop" or "playlistRemov
 /* the client went away without stopping; ends the session.  reason: "closed" (connections closed: it
    switched receivers or took the video back), "lost" (it stopped responding), "replaced" (another client) */
 bool hls_forward_disconnect(const char *reason);
-bool hls_forward_volume(double volume);     /* 0.0 (mute) to 1.0 */
+bool hls_forward_volume(double volume, double db);  /* 0.0 (mute) to 1.0, and the AirPlay dB value */
 
 /* latest state of the current session from the player; false if there is no current session */
 bool hls_forward_get_status(hls_forward_status_t *status);

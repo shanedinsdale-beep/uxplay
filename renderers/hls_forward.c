@@ -45,7 +45,7 @@ bool hls_forward_rate(float rate) { return false; }
 bool hls_forward_scrub(float position) { return false; }
 bool hls_forward_stop(const char *reason) { return false; }
 bool hls_forward_disconnect(const char *reason) { return false; }
-bool hls_forward_volume(double volume) { return false; }
+bool hls_forward_volume(double volume, double db) { return false; }
 bool hls_forward_get_status(hls_forward_status_t *status) { return false; }
 
 #else
@@ -568,8 +568,19 @@ bool hls_forward_stop(const char *reason) {
     return send_session_message("stop", NULL, 0.0, reason, true);
 }
 
-bool hls_forward_volume(double volume) {
-    return send_session_message("volume", "volume", volume, NULL, false);
+bool hls_forward_volume(double volume, double db) {
+    /* during a video, for that session; otherwise for the audio-only connection (no session field) */
+    char data[512];
+    line_t line = { data, 0, false };
+    pthread_mutex_lock(&mutex);
+    begin_message(&line, "volume", session[0] ? session : NULL);
+    put_str(&line, ",\"volume\":");
+    put_json_number(&line, volume);
+    put_str(&line, ",\"db\":");
+    put_json_number(&line, db);
+    bool ok = send_message_locked(&line);
+    pthread_mutex_unlock(&mutex);
+    return ok;
 }
 
 bool hls_forward_disconnect(const char *reason) {
