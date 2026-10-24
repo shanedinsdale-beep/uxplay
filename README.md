@@ -1477,6 +1477,13 @@ video), and only used to render audio, which will be AAC
 lossily-compressed audio in mirror mode with unrendered video, and
 superior-quality ALAC Apple Lossless audio in Airplay audio-only mode.
 
+**-audio-only** makes UxPlay advertise itself to clients as an AirPlay
+speaker rather than an Apple TV: the AirPlay feature bits for video (0),
+photo (1), FairPlay video (2), video volume (3), HLS (4), slideshow (5),
+bit 6, mirroring (7), screen rotation (8) and photo preloading (13) are
+cleared (audio bits are unchanged), so iOS/macOS list it only as an audio
+destination. Video display is also turned off, as with `-vs 0`.
+
 **-vrtp *pipeline***:  forward rtp packets of decrypted video to somewhere else, without rendering.
 Uses rtph264pay or rtph265pay as appropriate: *pipeline* should start with any
 rtph26xpay options (such as config_interval= or aggregate-mode =), followed by
