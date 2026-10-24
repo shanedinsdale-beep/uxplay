@@ -121,6 +121,13 @@ struct raop_conn_s {
     char *client_session_id;
     bool authenticated;
     bool have_active_remote;
+
+    /* AirPlay 1 (RAOP/AirTunes) stream parameters from ANNOUNCE, used by classic SETUP */
+    bool have_announce;
+    unsigned char announce_aeskey[16];
+    unsigned char announce_aesiv[16];
+    unsigned char announce_ct;       /* 2 = ALAC, 4 = AAC-main, 8 = AAC-ELD */
+    unsigned short announce_spf;
 };
 typedef struct raop_conn_s raop_conn_t;
 
@@ -426,9 +433,16 @@ conn_request(void *ptr, http_request_t *request, http_response_t **response) {
             }
         } else if (!strcmp(method, "OPTIONS")) {
             handler = &raop_handler_options;
+        } else if (!strcmp(method, "ANNOUNCE")) {
+            handler = &raop_handler_announce;
         } else if (!strcmp(method, "SETUP")) {
             raop->hls_pending = false;
-            handler = &raop_handler_setup;
+            /* classic AirPlay 1 SETUP has no plist body, but has a Transport header */
+            if (http_request_get_header(request, "Transport")) {
+                handler = &raop_handler_setup_classic;
+            } else {
+                handler = &raop_handler_setup;
+            }
         } else if (!strcmp(method, "GET_PARAMETER")) {
             handler = &raop_handler_get_parameter;
         } else if (!strcmp(method, "SET_PARAMETER")) {
@@ -477,6 +491,10 @@ conn_request(void *ptr, http_request_t *request, http_response_t **response) {
         handler = &http_handler_hls;
     }
 
+    if (conn->have_announce && raop->callbacks.conn_feedback) {
+        /* classic AirPlay 1 clients do not send "POST /feedback": count any request as a sign of life */
+        raop->callbacks.conn_feedback(raop->callbacks.cls);
+    }
     if (handler != NULL) {
         handler(conn, request, *response, &response_data, &response_datalen);
     } else {
