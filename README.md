@@ -1484,6 +1484,11 @@ bit 6, mirroring (7), screen rotation (8) and photo preloading (13) are
 cleared (audio bits are unchanged), so iOS/macOS list it only as an audio
 destination. Video display is also turned off, as with `-vs 0`.
 
+**-model *id***: model identifier advertised to clients in the mDNS
+records and `/info` replies (default `AppleTV3,2`). For example,
+`-audio-only -model AirPort10,115` (an AirPort Express) makes iOS show
+UxPlay with a speaker icon instead of an Apple TV icon.
+
 **-vrtp *pipeline***:  forward rtp packets of decrypted video to somewhere else, without rendering.
 Uses rtph264pay or rtph265pay as appropriate: *pipeline* should start with any
 rtph26xpay options (such as config_interval= or aggregate-mode =), followed by

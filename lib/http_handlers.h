@@ -74,7 +74,7 @@ http_handler_server_info(raop_conn_t *conn, http_request_t *request, http_respon
     plist_t mac_address_node = plist_new_string(hw_addr);
     plist_dict_set_item(r_node, "macAddress", mac_address_node);
 
-    plist_t model_node = plist_new_string(GLOBAL_MODEL);
+    plist_t model_node = plist_new_string(dnssd_get_model(raop->dnssd));
     plist_dict_set_item(r_node, "model", model_node);
 
     plist_t os_build_node = plist_new_string("12B435");
