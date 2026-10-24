@@ -42,6 +42,8 @@ typedef struct dnssd_s {
 
     char *pk;
 
+    char *model;
+
     uint32_t features1;
     uint32_t features2;
 
@@ -72,6 +74,8 @@ DNSSD_API const char *dnssd_get_name(dnssd_t *dnssd, int *length);
 DNSSD_API const char *dnssd_get_hw_addr(dnssd_t *dnssd, int *length);
 DNSSD_API void dnssd_set_airplay_features(dnssd_t *dnssd, int bit, int val);
 DNSSD_API uint64_t dnssd_get_airplay_features(dnssd_t *dnssd);
+DNSSD_API int dnssd_set_model(dnssd_t *dnssd, const char *model);
+DNSSD_API const char *dnssd_get_model(dnssd_t *dnssd);
 DNSSD_API void dnssd_set_pk(dnssd_t *dnssd, char * pk_str);
 
 /* An external dns_sd.h library (Avahi's compat layer, Bonjour) hands each

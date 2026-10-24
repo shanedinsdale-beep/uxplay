@@ -184,6 +184,7 @@ static int n_video_renderers = 0;
 static int n_audio_renderers = 0;
 static bool hls_support = false;
 static bool audio_only = false;
+static std::string model_id = "";
 static std::string hls_forward_socket = "";
 static bool hls_forward_audio_started = false;
 /* the audio stream ended: tell the player once (TEARDOWN of the audio stream, or the last connection closing) */
@@ -1090,6 +1091,8 @@ static void print_info (char *name) {
     printf("-vs 0     Streamed audio only, with no video display window\n");
     printf("-audio-only  Advertise as an AirPlay speaker (no video/photo/mirroring\n");
     printf("          features); implies \"-vs 0\" video handling\n");
+    printf("-model id Model identifier advertised to clients; default \"AppleTV3,2\"\n");
+    printf("          e.g. \"AirPort10,115\" (AirPort Express) to show as a speaker\n");
     printf("-vrtp pl  Use rtph26[4,5]pay to send decoded video elsewhere: \"pl\"\n");
     printf("          is the remaining pipeline, starting with rtph26*pay options:\n");
     printf("          e.g. \"config-interval=1 ! udpsink host=127.0.0.1 port=5000\"\n");
@@ -2139,6 +2142,9 @@ static void parse_arguments (int argc, char *argv[]) {
             }
             hls_forward_socket = argv[++i];
             hls_support = true;
+        } else if (arg == "-model") {
+            if (!option_has_value(i, argc, arg, argv[i+1])) exit(1);
+            model_id = argv[++i];
         } else if (arg == "-audio-only") {
             audio_only = true;
         } else if (arg == "-hls") {
@@ -2407,6 +2413,11 @@ static int start_dnssd(std::vector<char> hw_addr, std::string name) {
     dnssd = dnssd_init(name.c_str(), strlen(name.c_str()), hw_addr.data(), hw_addr.size(), pin_pw, &dnssd_error);
     if (dnssd_error) {
         LOGE("Could not initialize dnssd library!: error %d", dnssd_error);
+        return 1;
+    }
+
+    if (!model_id.empty() && dnssd_set_model(dnssd, model_id.c_str())) {
+        LOGE("Could not set model \"%s\"", model_id.c_str());
         return 1;
     }
 

@@ -262,7 +262,7 @@ dnssd_register_raop(dnssd_t *dnssd_public, unsigned short port)
     dnssd->TXTRecordSetValue(&dnssd->raop_record, "et", strlen(RAOP_ET), RAOP_ET);
     dnssd->TXTRecordSetValue(&dnssd->raop_record, "vv", strlen(RAOP_VV), RAOP_VV);
     dnssd->TXTRecordSetValue(&dnssd->raop_record, "ft", strlen(features), features);
-    dnssd->TXTRecordSetValue(&dnssd->raop_record, "am", strlen(GLOBAL_MODEL), GLOBAL_MODEL);
+    dnssd->TXTRecordSetValue(&dnssd->raop_record, "am", strlen(dnssd_get_model(dnssd_public)), dnssd_get_model(dnssd_public));
     dnssd->TXTRecordSetValue(&dnssd->raop_record, "md", strlen(RAOP_MD), RAOP_MD);
     dnssd->TXTRecordSetValue(&dnssd->raop_record, "rhd", strlen(RAOP_RHD), RAOP_RHD);
     switch (dnssd_public->pin_pw) {
@@ -368,7 +368,7 @@ dnssd_register_airplay(dnssd_t *dnssd_public, unsigned short port)
         dnssd->TXTRecordSetValue(&dnssd->airplay_record, "flags", 3, "0x4");
         break;
     }
-    dnssd->TXTRecordSetValue(&dnssd->airplay_record, "model", strlen(GLOBAL_MODEL), GLOBAL_MODEL);
+    dnssd->TXTRecordSetValue(&dnssd->airplay_record, "model", strlen(dnssd_get_model(dnssd_public)), dnssd_get_model(dnssd_public));
     dnssd->TXTRecordSetValue(&dnssd->airplay_record, "pk", strlen(dnssd_public->pk), dnssd_public->pk);
     dnssd->TXTRecordSetValue(&dnssd->airplay_record, "pi", strlen(AIRPLAY_PI), AIRPLAY_PI);
     dnssd->TXTRecordSetValue(&dnssd->airplay_record, "srcvers", strlen(AIRPLAY_SRCVERS), AIRPLAY_SRCVERS);

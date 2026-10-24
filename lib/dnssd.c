@@ -130,6 +130,7 @@ dnssd_destroy(dnssd_t *dnssd)
         if (dnssd->name) {
             free(dnssd->name);
         }
+        free(dnssd->model);
         if (dnssd->dnssd_private) {
             dnssd_private_destroy(dnssd->dnssd_private);
         }
@@ -156,6 +157,19 @@ uint64_t dnssd_get_airplay_features(dnssd_t *dnssd) {
     uint64_t features = ((uint64_t) dnssd->features2) << 32;
     features += (uint64_t) dnssd->features1;
     return features;
+}
+
+/* model identifier advertised in mDNS TXT records and /info replies (default GLOBAL_MODEL) */
+int dnssd_set_model(dnssd_t *dnssd, const char *model) {
+    char *copy = strdup(model);
+    if (!copy) return -1;
+    free(dnssd->model);
+    dnssd->model = copy;
+    return 0;
+}
+
+const char *dnssd_get_model(dnssd_t *dnssd) {
+    return dnssd->model ? dnssd->model : GLOBAL_MODEL;
 }
 
 void dnssd_set_pk(dnssd_t *dnssd, char * pk_str) {

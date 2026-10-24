@@ -126,7 +126,7 @@ static int dnssd_build_raop_txt(dnssd_t *dnssd_public)
            mdnsd_txt_add(&dnssd->raop_record, "et", RAOP_ET) ||
            mdnsd_txt_add(&dnssd->raop_record, "vv", RAOP_VV) ||
            mdnsd_txt_add(&dnssd->raop_record, "ft", features) ||
-           mdnsd_txt_add(&dnssd->raop_record, "am", GLOBAL_MODEL) ||
+           mdnsd_txt_add(&dnssd->raop_record, "am", dnssd_get_model(dnssd_public)) ||
            mdnsd_txt_add(&dnssd->raop_record, "md", RAOP_MD) ||
            mdnsd_txt_add(&dnssd->raop_record, "rhd", RAOP_RHD) ||
            mdnsd_txt_add(&dnssd->raop_record, "pw", pw) ||
@@ -161,7 +161,7 @@ static int dnssd_build_airplay_txt(dnssd_t *dnssd_public)
            mdnsd_txt_add(&dnssd->airplay_record, "features", features) ||
            mdnsd_txt_add(&dnssd->airplay_record, "pw", dnssd_public->pin_pw ? "true" : "false") ||
            mdnsd_txt_add(&dnssd->airplay_record, "flags", "0x4") ||
-           mdnsd_txt_add(&dnssd->airplay_record, "model", GLOBAL_MODEL) ||
+           mdnsd_txt_add(&dnssd->airplay_record, "model", dnssd_get_model(dnssd_public)) ||
            mdnsd_txt_add(&dnssd->airplay_record, "pk", dnssd_public->pk) ||
            mdnsd_txt_add(&dnssd->airplay_record, "pi", AIRPLAY_PI) ||
            mdnsd_txt_add(&dnssd->airplay_record, "srcvers", AIRPLAY_SRCVERS) ||

@@ -157,7 +157,7 @@ raop_handler_info(raop_conn_t *conn,
     plist_t keep_alive_send_stats_as_body_node = plist_new_bool(1);
     plist_dict_set_item(res_node, "keepAliveSendStatsAsBody", keep_alive_send_stats_as_body_node);
 
-    plist_t model_node = plist_new_string(GLOBAL_MODEL);
+    plist_t model_node = plist_new_string(dnssd_get_model(raop->dnssd));
     plist_dict_set_item(res_node, "model", model_node);
 
     /* dont need anything below here in the Bluetooth LE response */
