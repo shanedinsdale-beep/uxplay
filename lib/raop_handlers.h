@@ -1066,6 +1066,233 @@ raop_handler_setup(raop_conn_t *conn,
     http_response_add_header(response, "Content-Type", "application/x-apple-binary-plist");
 }
 
+/* Minimal base64 decoder (for the classic AirPlay 1 SDP attributes). Returns decoded length, or -1 on error */
+static int
+raop_base64_decode(const char *in, unsigned char *out, int out_size)
+{
+    int n = 0, bits = 0, nbits = 0;
+    for (; *in && *in != '=' && *in != '\r' && *in != '\n'; in++) {
+        int v;
+        if (*in >= 'A' && *in <= 'Z') v = *in - 'A';
+        else if (*in >= 'a' && *in <= 'z') v = *in - 'a' + 26;
+        else if (*in >= '0' && *in <= '9') v = *in - '0' + 52;
+        else if (*in == '+') v = 62;
+        else if (*in == '/') v = 63;
+        else return -1;
+        bits = (bits << 6) | v;
+        nbits += 6;
+        if (nbits >= 8) {
+            nbits -= 8;
+            if (n >= out_size) return -1;
+            out[n++] = (unsigned char) ((bits >> nbits) & 0xff);
+        }
+    }
+    return n;
+}
+
+/* Classic AirPlay 1 (RAOP/AirTunes) ANNOUNCE: SDP describing the audio stream. The stream key arrives as "fpaeskey"
+ * (FairPlay-wrapped, same 72-byte format as the "ekey" in the plist SETUP) and is unwrapped with fairplay_decrypt().
+ * "rsaaeskey" (RSA-wrapped key) is not supported. */
+static void
+raop_handler_announce(raop_conn_t *conn,
+                      http_request_t *request, http_response_t *response,
+                      char **response_data, int *response_datalen)
+{
+    raop_t *raop = conn->raop;
+    const char *data = NULL;
+    int data_len = 0;
+    char *sdp = NULL;
+    char *fpaeskey = NULL, *aesiv = NULL, *fmtp = NULL, *rtpmap = NULL;
+    bool have_rsa = false;
+    unsigned char ct = 0;
+    unsigned short spf = 0;
+
+    /* access control by deviceID or by digest authentication is not possible here: refuse if a password is set */
+    if (raop->callbacks.passwd) {
+        int len = 0;
+        raop->callbacks.passwd(raop->callbacks.cls, &len);
+        if (len) {
+            logger_log(raop->logger, LOGGER_ERR, "ANNOUNCE (AirPlay 1 stream setup) is not supported when a password is required");
+            http_response_init(response, "RTSP/1.0", 501, "Not Implemented");
+            return;
+        }
+    }
+
+    data = http_request_get_data(request, &data_len);
+    if (!data || data_len <= 0 || !(sdp = calloc(1, data_len + 1))) {
+        http_response_init(response, "RTSP/1.0", 400, "Bad Request");
+        return;
+    }
+    memcpy(sdp, data, data_len);
+
+    char *saveptr = NULL;
+    for (char *line = strtok_r(sdp, "\r\n", &saveptr); line; line = strtok_r(NULL, "\r\n", &saveptr)) {
+        if (strncmp(line, "a=", 2)) continue;
+        line += 2;
+        if (!strncmp(line, "rtpmap:", 7)) rtpmap = line + 7;
+        else if (!strncmp(line, "fmtp:", 5)) fmtp = line + 5;
+        else if (!strncmp(line, "fpaeskey:", 9)) fpaeskey = line + 9;
+        else if (!strncmp(line, "aesiv:", 6)) aesiv = line + 6;
+        else if (!strncmp(line, "rsaaeskey:", 10)) have_rsa = true;
+    }
+
+    if (have_rsa && !fpaeskey) {
+        logger_log(raop->logger, LOGGER_ERR, "ANNOUNCE uses an RSA-wrapped audio key (rsaaeskey): not supported");
+        http_response_init(response, "RTSP/1.0", 501, "Not Implemented");
+        goto cleanup;
+    }
+    if (!fpaeskey || !aesiv || !rtpmap || !fmtp) {
+        logger_log(raop->logger, LOGGER_ERR, "ANNOUNCE SDP is missing rtpmap, fmtp, fpaeskey or aesiv");
+        http_response_init(response, "RTSP/1.0", 400, "Bad Request");
+        goto cleanup;
+    }
+
+    if (strstr(rtpmap, "AppleLossless")) {
+        /* fmtp:96 <frames per packet> 0 16 40 10 14 2 255 0 0 44100 */
+        unsigned int pt = 0, frames = 0;
+        ct = 2;
+        if (sscanf(fmtp, "%u %u", &pt, &frames) == 2 && frames > 0 && frames <= 4096) {
+            spf = (unsigned short) frames;
+        } else {
+            spf = 352;
+        }
+    } else if (strstr(rtpmap, "mpeg4-generic")) {
+        if (strstr(fmtp, "AAC-eld")) {
+            ct = 8;
+            spf = 480;
+        } else {
+            ct = 4;
+            spf = 1024;
+        }
+    } else {
+        logger_log(raop->logger, LOGGER_ERR, "ANNOUNCE: unsupported audio codec \"%s\"", rtpmap);
+        http_response_init(response, "RTSP/1.0", 415, "Unsupported Media Type");
+        goto cleanup;
+    }
+
+    unsigned char eaeskey[72] = { 0 };
+    unsigned char key[16] = { 0 };
+    unsigned char iv[16] = { 0 };
+    int keylen = raop_base64_decode(fpaeskey, eaeskey, (int) sizeof(eaeskey));
+    int ivlen = raop_base64_decode(aesiv, iv, (int) sizeof(iv));
+    if (keylen != 72 || ivlen != 16) {
+        logger_log(raop->logger, LOGGER_ERR, "ANNOUNCE: invalid fpaeskey (%d bytes, need 72) or aesiv (%d bytes, need 16)", keylen, ivlen);
+        http_response_init(response, "RTSP/1.0", 400, "Bad Request");
+        goto cleanup;
+    }
+    /* same existing FairPlay transport-key unwrapping as used for the "ekey" in the plist SETUP */
+    int ret = fairplay_decrypt(conn->fairplay, eaeskey, key);
+    logger_log(raop->logger, LOGGER_DEBUG, "fairplay_decrypt ret = %d", ret);
+    if (ret) {
+        logger_log(raop->logger, LOGGER_ERR, "ANNOUNCE: fairplay_decrypt of fpaeskey failed (no completed fp-setup?)");
+        http_response_init(response, "RTSP/1.0", 500, "Internal Server Error");
+        goto cleanup;
+    }
+
+    memcpy(conn->announce_aeskey, key, 16);
+    memcpy(conn->announce_aesiv, iv, 16);
+    conn->announce_ct = ct;
+    conn->announce_spf = spf;
+    conn->have_announce = true;
+    logger_log(raop->logger, LOGGER_DEBUG, "ANNOUNCE: ct = %u, spf = %u", ct, spf);
+
+cleanup:
+    free(sdp);
+}
+
+/* Classic AirPlay 1 SETUP: no plist body; "Transport: RTP/AVP/UDP;unicast;interleaved=0-1;mode=record;
+ * control_port=N;timing_port=M".  Starts the same legacy audio stream (type 96) as the plist SETUP, using the key,
+ * iv and format from ANNOUNCE. */
+static void
+raop_handler_setup_classic(raop_conn_t *conn,
+                           http_request_t *request, http_response_t *response,
+                           char **response_data, int *response_datalen)
+{
+    raop_t *raop = conn->raop;
+    const char *dacp_id = http_request_get_header(request, "DACP-ID");
+    const char *active_remote_header = http_request_get_header(request, "Active-Remote");
+    const char *transport = http_request_get_header(request, "Transport");
+    unsigned long remote_cport = 0, timing_rport = 0;
+
+    if (!conn->have_announce) {
+        logger_log(raop->logger, LOGGER_ERR, "classic SETUP without a preceding ANNOUNCE");
+        http_response_init(response, "RTSP/1.0", 455, "Method Not Valid In This State");
+        return;
+    }
+    if (conn->raop_rtp) {
+        logger_log(raop->logger, LOGGER_ERR, "classic SETUP: audio stream already set up");
+        http_response_init(response, "RTSP/1.0", 455, "Method Not Valid In This State");
+        return;
+    }
+
+    if (dacp_id && active_remote_header) {
+        logger_log(raop->logger, LOGGER_DEBUG, "DACP-ID: %s", dacp_id);
+        logger_log(raop->logger, LOGGER_DEBUG, "Active-Remote: %s", active_remote_header);
+    }
+
+    const char *ptr = strstr(transport, "control_port=");
+    if (ptr) remote_cport = strtoul(ptr + strlen("control_port="), NULL, 10);
+    ptr = strstr(transport, "timing_port=");
+    if (ptr) timing_rport = strtoul(ptr + strlen("timing_port="), NULL, 10);
+    if (remote_cport > 65535 || timing_rport > 65535) {
+        remote_cport = timing_rport = 0;
+    }
+    logger_log(raop->logger, LOGGER_DEBUG, "classic SETUP: control_port = %lu, timing_port = %lu", remote_cport, timing_rport);
+    if (!timing_rport) {
+        logger_log(raop->logger, LOGGER_ERR, "classic SETUP: Transport header lacks a valid timing_port");
+        http_response_init(response, "RTSP/1.0", 400, "Bad Request");
+        return;
+    }
+
+    unsigned short timing_lport = raop->timing_lport;
+    unsigned short cport = raop->control_lport, dport = raop->data_lport;
+    unsigned short remote_cport_s = (unsigned short) remote_cport;
+    unsigned char ct = conn->announce_ct;
+    unsigned int sr = AUDIO_SAMPLE_RATE;
+    timing_protocol_t time_protocol = TP_UNSPECIFIED;   /* as for clients that do not specify timingProtocol */
+
+    char remote[40] = { 0 };
+    int len = utils_ipaddress_to_string(conn->remotelen, conn->remote, conn->zone_id, remote, (int) sizeof(remote));
+    if (!len || len > (int) sizeof(remote)) {
+        logger_log(raop->logger, LOGGER_ERR, "failed to extract valid client ip address");
+    }
+
+    conn->raop_ntp = raop_ntp_init(raop->logger, &raop->callbacks, remote,
+                                   conn->remotelen, (unsigned short) timing_rport, &time_protocol);
+    if (!conn->raop_ntp) {
+        http_response_init(response, "RTSP/1.0", 500, "Internal Server Error");
+        return;
+    }
+    raop_ntp_start(conn->raop_ntp, &timing_lport);
+    conn->raop_rtp = raop_rtp_init(raop->logger, &raop->callbacks, conn->raop_ntp,
+                                   remote, conn->remotelen, conn->announce_aeskey, conn->announce_aesiv);
+    if (!conn->raop_rtp) {
+        http_response_init(response, "RTSP/1.0", 500, "Internal Server Error");
+        return;
+    }
+    if (dacp_id && active_remote_header) {
+        raop_rtp_remote_control_id(conn->raop_rtp, dacp_id, active_remote_header);
+    }
+
+    if (raop->callbacks.audio_get_format) {
+        unsigned short spf = conn->announce_spf;
+        bool isMedia = false, usingScreen = false;
+        uint64_t audioFormat = (ct == 2 ? 0x40000 : (ct == 8 ? 0x1000000 : 0x400000));
+        raop->callbacks.audio_get_format(raop->callbacks.cls, &ct, &spf, &usingScreen, &isMedia, &audioFormat);
+    }
+
+    raop_rtp_start_audio(conn->raop_rtp, &remote_cport_s, &cport, &dport, &ct, &sr);
+    logger_log(raop->logger, LOGGER_DEBUG, "RAOP initialized success (classic SETUP)");
+
+    char transport_reply[160];
+    snprintf(transport_reply, sizeof(transport_reply),
+             "RTP/AVP/UDP;unicast;mode=record;server_port=%u;control_port=%u;timing_port=%u",
+             dport, cport, timing_lport);
+    http_response_add_header(response, "Transport", transport_reply);
+    http_response_add_header(response, "Session", "1");
+    /* "Audio-Jack-Status" is added to every response by http_response_init() */
+}
+
 static void
 raop_handler_get_parameter(raop_conn_t *conn,
                            http_request_t *request, http_response_t *response,
