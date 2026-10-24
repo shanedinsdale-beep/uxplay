@@ -183,6 +183,7 @@ static bool h265_support = false;
 static int n_video_renderers = 0;
 static int n_audio_renderers = 0;
 static bool hls_support = false;
+static bool audio_only = false;
 static std::string hls_forward_socket = "";
 static bool hls_forward_audio_started = false;
 /* the audio stream ended: tell the player once (TEARDOWN of the audio stream, or the last connection closing) */
@@ -1087,6 +1088,8 @@ static void print_info (char *name) {
     printf("          gtksink,waylandsink,kmssink,fbdevsink,osxvideosink,\n");
     printf("          d3d11videosink,d3d12videosink, etc.\n");
     printf("-vs 0     Streamed audio only, with no video display window\n");
+    printf("-audio-only  Advertise as an AirPlay speaker (no video/photo/mirroring\n");
+    printf("          features); implies \"-vs 0\" video handling\n");
     printf("-vrtp pl  Use rtph26[4,5]pay to send decoded video elsewhere: \"pl\"\n");
     printf("          is the remaining pipeline, starting with rtph26*pay options:\n");
     printf("          e.g. \"config-interval=1 ! udpsink host=127.0.0.1 port=5000\"\n");
@@ -2136,6 +2139,8 @@ static void parse_arguments (int argc, char *argv[]) {
             }
             hls_forward_socket = argv[++i];
             hls_support = true;
+        } else if (arg == "-audio-only") {
+            audio_only = true;
         } else if (arg == "-hls") {
             hls_support = true;
             if (i < argc - 1 && *argv[i+1] != '-') {
@@ -2503,6 +2508,15 @@ static int start_dnssd(std::vector<char> hw_addr, std::string name) {
     
     /* needed for h265 video support */
     dnssd_set_airplay_features(dnssd, 42, (int) h265_support);
+
+    /* -audio-only: advertise as an AirPlay speaker: clear the video-related feature bits,
+     * keep the audio bits (and legacy pairing, below) */
+    if (audio_only) {
+        const int video_bits[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 13 };
+        for (unsigned int k = 0; k < sizeof(video_bits)/sizeof(video_bits[0]); k++) {
+            dnssd_set_airplay_features(dnssd, video_bits[k], 0);
+        }
+    }
 
     /* bit 27 of Features determines whether the AirPlay2 client-pairing protocol will be used (1) or not (0) */
     dnssd_set_airplay_features(dnssd, 27, (int) setup_legacy_pairing);
@@ -3599,7 +3613,7 @@ int main (int argc, char *argv[]) {
     }
 #endif
 
-    if (videosink == "0") {
+    if (videosink == "0" || audio_only) {
         use_video = false;
 	videosink.erase();
         videosink.append("fakesink");
