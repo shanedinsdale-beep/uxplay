@@ -46,6 +46,9 @@ bool hls_forward_scrub(float position) { return false; }
 bool hls_forward_stop(const char *reason) { return false; }
 bool hls_forward_disconnect(const char *reason) { return false; }
 bool hls_forward_volume(double volume, double db) { return false; }
+bool hls_forward_audio(const char *state, const char *codec, bool screen) { return false; }
+bool hls_forward_metadata(const char *title, const char *artist, const char *album) { return false; }
+bool hls_forward_coverart(int bytes) { return false; }
 bool hls_forward_get_status(hls_forward_status_t *status) { return false; }
 
 #else
@@ -432,7 +435,7 @@ static void *connection_thread(void *arg) {
         begin_message(&line, "hello", NULL);
         put_str(&line, ",\"role\":\"uxplay\",\"version\":");
         put_json_string(&line, uxplay_version);
-        put_str(&line, ",\"features\":[\"volume\"]");
+        put_str(&line, ",\"features\":[\"volume\",\"audio\"]");
         pthread_mutex_lock(&mutex);
         sock = s;
         send_message_locked(&line);
@@ -578,6 +581,63 @@ bool hls_forward_volume(double volume, double db) {
     put_json_number(&line, volume);
     put_str(&line, ",\"db\":");
     put_json_number(&line, db);
+    bool ok = send_message_locked(&line);
+    pthread_mutex_unlock(&mutex);
+    return ok;
+}
+
+bool hls_forward_audio(const char *state, const char *codec, bool screen) {
+    /* AirPlay audio (no video session): "start" (with codec and screen), "flush" or "stop" */
+    char data[512];
+    line_t line = { data, 0, false };
+    pthread_mutex_lock(&mutex);
+    begin_message(&line, "audio", NULL);
+    put_str(&line, ",\"state\":");
+    put_json_string(&line, state);
+    if (codec) {
+        put_str(&line, ",\"codec\":");
+        put_json_string(&line, codec);
+        put_str(&line, screen ? ",\"screen\":true" : ",\"screen\":false");
+    }
+    bool ok = send_message_locked(&line);
+    pthread_mutex_unlock(&mutex);
+    return ok;
+}
+
+bool hls_forward_metadata(const char *title, const char *artist, const char *album) {
+    /* the non-empty fields only */
+    char *data = (char *) malloc(MAX_LINE);   /* put() limits a line to MAX_LINE bytes */
+    if (!data) {
+        return false;
+    }
+    line_t line = { data, 0, false };
+    pthread_mutex_lock(&mutex);
+    begin_message(&line, "metadata", NULL);
+    if (title && title[0]) {
+        put_str(&line, ",\"title\":");
+        put_json_string(&line, title);
+    }
+    if (artist && artist[0]) {
+        put_str(&line, ",\"artist\":");
+        put_json_string(&line, artist);
+    }
+    if (album && album[0]) {
+        put_str(&line, ",\"album\":");
+        put_json_string(&line, album);
+    }
+    bool ok = send_message_locked(&line);
+    pthread_mutex_unlock(&mutex);
+    free(data);
+    return ok;
+}
+
+bool hls_forward_coverart(int bytes) {
+    char data[128];
+    line_t line = { data, 0, false };
+    pthread_mutex_lock(&mutex);
+    begin_message(&line, "coverart", NULL);
+    put_str(&line, ",\"bytes\":");
+    put_json_number(&line, bytes > 0 ? (double) bytes : 0.0);
     bool ok = send_message_locked(&line);
     pthread_mutex_unlock(&mutex);
     return ok;
