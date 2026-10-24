@@ -21,7 +21,8 @@
    internal GStreamer player.  UxPlay connects to a Unix socket where the external process listens, and
    exchanges newline-delimited JSON messages with it (protocol version 1):
 
-   UxPlay -> player:  hello, play, rate, scrub, stop, disconnect, volume
+   UxPlay -> player:  hello, play, rate, scrub, stop, disconnect, volume,
+                      audio, metadata, coverart
    player -> UxPlay:  hello, status (answers GET /playback-info), ended, failed
 
    Example:  {"v":1,"type":"play","session":"<uuid>","location":"https://...","start":0,"client":"","kind":"url"}  */
@@ -62,6 +63,12 @@ bool hls_forward_stop(const char *reason);   /* reason: "stop" or "playlistRemov
    switched receivers or took the video back), "lost" (it stopped responding), "replaced" (another client) */
 bool hls_forward_disconnect(const char *reason);
 bool hls_forward_volume(double volume, double db);  /* 0.0 (mute) to 1.0, and the AirPlay dB value */
+/* AirPlay audio (not video): state "start" (with codec "pcm", "alac", "aac" or "aac-eld", and whether it is the
+   audio of screen mirroring), "flush" (pause, skip or seek on the client; codec NULL) or "stop" (codec NULL) */
+bool hls_forward_audio(const char *state, const char *codec, bool screen);
+/* the current track's tags; empty or NULL ones are left out */
+bool hls_forward_metadata(const char *title, const char *artist, const char *album);
+bool hls_forward_coverart(int bytes);   /* the cover art file now holds this many bytes (0: cleared) */
 
 /* latest state of the current session from the player; false if there is no current session */
 bool hls_forward_get_status(hls_forward_status_t *status);

@@ -184,6 +184,14 @@ static int n_video_renderers = 0;
 static int n_audio_renderers = 0;
 static bool hls_support = false;
 static std::string hls_forward_socket = "";
+static bool hls_forward_audio_started = false;
+/* the audio stream ended: tell the player once (TEARDOWN of the audio stream, or the last connection closing) */
+static void hls_forward_audio_stopped() {
+    if (hls_forward_audio_started) {
+        hls_forward_audio_started = false;
+        hls_forward_audio("stop", NULL, false);
+    }
+}
 static bool client_lost = false;   /* the client stopped sending feedback (left the network) */
 static std::string lang_requested = "";
 static std::string lang_subtitles = "";
@@ -2187,16 +2195,18 @@ static void process_metadata(int count, const char *dmap_tag, const unsigned cha
                 break;
             case 'l':
                 metadata_text->append("Album: ");  /*asal*/
-                if (render_coverart) {
+                if (render_coverart || hls_forward_socket.length()) {
                     track_album.erase();
                     track_album.append(metadata, metadata + datalen);
                 }
                 break;
             case 'r':
                 metadata_text->append("Artist: ");  /*asar*/
-                if (render_coverart) {
+                if (render_coverart || hls_forward_socket.length()) {
                     artist.erase();
                     artist.append(metadata, metadata + datalen);
+                }
+                if (render_coverart) {
                     if (coverart_artist == "_pending_") { 
                         coverart_artist = artist;
                     }
@@ -2274,7 +2284,7 @@ static void process_metadata(int count, const char *dmap_tag, const unsigned cha
     } else if (strcmp (dmap_tag, "minm") == 0) {
         dmap_type = 9;
         metadata_text->append("Title: ");
-        if (render_coverart) {
+        if (render_coverart || hls_forward_socket.length()) {
             track_title.erase();
             track_title.append(metadata, metadata + datalen);
         }
@@ -2650,6 +2660,7 @@ extern "C" void conn_destroy (void *cls) {
     LOGD("Open connections: %i", open_connections);
     if (open_connections == 0) {
         if (hls_forward_socket.length()) {
+            hls_forward_audio_stopped();
             /* closed: the client switched to another receiver or took the video back; lost: it went away */
             hls_forward_disconnect(client_lost ? "lost" : "closed");
         }
@@ -2797,6 +2808,9 @@ extern "C" void video_resume (void *cls) {
 
 
 extern "C" void audio_flush (void *cls) {
+    if (hls_forward_socket.length()) {
+        hls_forward_audio("flush", NULL, false);
+    }
     if (use_audio) {
         audio_renderer_flush();
     }
@@ -2868,6 +2882,22 @@ extern "C" void audio_set_volume (void *cls, float volume) {
     LOGI("AirPlay volume %.1f dB (slider %.0f%%): GStreamer volume %.3f", (double) volume, 100.0 * frac, gst_volume);
 }
 
+/* codec name for the "audio" message, from the AirPlay ct value */
+static const char *hls_audio_codec(unsigned char ct) {
+    switch (ct) {
+    case 1:
+        return "pcm";
+    case 2:
+        return "alac";
+    case 4:
+        return "aac";
+    case 8:
+        return "aac-eld";
+    default:
+        return "unknown";
+    }
+}
+
 extern "C" void audio_get_format (void *cls, unsigned char *ct, unsigned short *spf, bool *usingScreen, bool *isMedia, uint64_t *audioFormat) {
     unsigned char type;
     LOGI("ct=%d spf=%d usingScreen=%d isMedia=%d  audioFormat=0x%lx",*ct, *spf, *usingScreen, *isMedia, (unsigned long) *audioFormat);
@@ -2888,6 +2918,11 @@ extern "C" void audio_get_format (void *cls, unsigned char *ct, unsigned short *
     }
     audio_type = type;
     
+    if (hls_forward_socket.length()) {
+        hls_forward_audio("start", hls_audio_codec(*ct), *usingScreen);
+        hls_forward_audio_started = true;
+    }
+
     if (use_audio) {
       audio_renderer_start(ct);
     }
@@ -2914,6 +2949,9 @@ extern "C" void audio_set_coverart(void *cls, const void *buffer, int buflen) {
     if (buffer && coverart_filename.length()) {
         write_coverart(coverart_filename.c_str(), buffer, buflen);
         LOGI("coverart size %d written to %s", buflen,  coverart_filename.c_str());
+        if (hls_forward_socket.length()) {
+            hls_forward_coverart(buflen);
+        }
     } else if (buffer && render_coverart) {
         video_renderer_choose_codec(true, false);  /* video_is_jpeg = true */
         video_renderer_display_jpeg(buffer, &buflen);
@@ -2922,6 +2960,9 @@ extern "C" void audio_set_coverart(void *cls, const void *buffer, int buflen) {
 }
 
 extern "C" void audio_stop_coverart_rendering(void *cls) {
+    if (hls_forward_socket.length()) {
+        hls_forward_audio_stopped();   /* called on TEARDOWN of the audio stream */
+    }
     if (render_coverart) {
         video_reset(cls, RESET_TYPE_RTP_SHUTDOWN);
     }
@@ -2958,6 +2999,12 @@ extern "C" void audio_set_metadata(void *cls, const void *buffer, int buflen) {
         return;
     }
     std::string metadata_text = "";
+    if (hls_forward_socket.length()) {
+        /* forward only the tags of this item */
+        artist.erase();
+        track_title.erase();
+        track_album.erase();
+    }
     while (buflen >= 8) {
         count++;
         if (parse_dmap_header(metadata, dmap_tag, &datalen)) {
@@ -2976,6 +3023,9 @@ extern "C" void audio_set_metadata(void *cls, const void *buffer, int buflen) {
     }
     if (buflen != 0) {
         LOGE("%d bytes of metadata were not processed", buflen);
+    }
+    if (hls_forward_socket.length()) {
+        hls_forward_metadata(track_title.c_str(), artist.c_str(), track_album.c_str());
     }
     // Update video renderer with track metadata for cover art display
     if (render_coverart) {
